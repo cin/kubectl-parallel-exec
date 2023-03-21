@@ -54,4 +54,4 @@ k8s-parallel-exec -kubeconfig ~/.kube/config -c cassandra -l app=cassandra nodet
 This command would execute `nodetool status` on all the Cassandra containers in pods with the label "app=cassandra" in parallel, and then aggregate and display the results.
 
 ## Credits
-The initial implementation for this project were provided by ChatGPT from OpenAI.
+The initial implementation for this project were provided by ChatGPT from OpenAI. Other than the idea for the project, ChatGPT created nearly all of the code in this repo (even the README.md). 

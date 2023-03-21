@@ -31,10 +31,7 @@ const (
 )
 
 const (
-	divText = "----------------------------------------------------\n"
-)
-
-var (
+	divText      = "----------------------------------------------------\n"
 	divBarColor  = BrightYellow
 	podNameColor = BrightCyan
 )
