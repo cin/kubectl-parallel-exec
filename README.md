@@ -1,6 +1,6 @@
 # k8s-parallel-exec
 
-A Golang-based tool for executing commands in parallel on Kubernetes pods with specified labels, similar to GNU Parallel.
+A mostly GPT-4 created Golang-based tool for executing commands in parallel on Kubernetes pods with specified labels, similar to GNU Parallel. GPT-4 even helped debug, name the project, create this README (aside from this), create a logo (when DALL-E's not overloaded), and craft the announcement tweet for the project.
 
 ## Features
 
