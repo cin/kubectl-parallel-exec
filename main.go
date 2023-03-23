@@ -32,7 +32,7 @@ const (
 
 const (
 	divText      = "----------------------------------------------------\n"
-	divBarColor  = BrightYellow
+	divColor     = BrightYellow
 	podNameColor = BrightCyan
 )
 
@@ -90,9 +90,9 @@ func main() {
 				results <- fmt.Sprintf("Error executing command on pod %s: %v", p.Name, err)
 			} else {
 				results <- fmt.Sprintf("%sPod %s\n%s%s",
-					colorize(divBarColor, divText),
+					colorize(divColor, divText),
 					colorize(podNameColor, p.Name),
-					colorize(divBarColor, divText),
+					colorize(divColor, divText),
 					output)
 			}
 		}(pod)
