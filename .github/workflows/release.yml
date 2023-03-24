@@ -44,3 +44,35 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         args: './k8s-parallel-exec-*'
+
+    - name: Checkout Homebrew tap repository
+      uses: actions/checkout@v2
+      with:
+        repository: cin/homebrew-k8s-parallel-exec
+
+    - name: Update Homebrew formula
+      run: |
+        FORMULA_FILE="k8s-parallel-exec.rb"
+        NEW_VERSION="${{ github.event.release.tag_name }}"
+        sed -i "s|version \"[^\"]*\"|version \"${NEW_VERSION}\"|g" "${FORMULA_FILE}"
+
+        function update_sha {
+          local new_sha=$(sha256sum $1 | awk '{print $1}')
+          gawk -i inplace -v platform="$1" -v new_sha="$new_sha" '
+            index($0, platform) {
+              print; getline; sub(/sha256 ".*"/, "sha256 \"" new_sha "\"");
+            }1' "${FORMULA_FILE}"
+        }
+
+        update_sha k8s-parallel-exec-linux-amd64
+        update_sha k8s-parallel-exec-linux-arm64
+        update_sha k8s-parallel-exec-darwin-amd64
+        update_sha k8s-parallel-exec-darwin-arm64
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add "k8s-parallel-exec.rb"
+        git commit -m "Update k8s-parallel-exec to ${{ github.event.release.tag_name }}"
+        git push
