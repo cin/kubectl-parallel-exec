@@ -48,12 +48,21 @@ k8s-parallel-exec -kubeconfig /path/to/kubeconfig -c container-name -l label-sel
 - `-l`: Label selector to filter the pods.
 - `command-to-execute`: The command to run inside the specified container in each pod.
 
-
 Example
 ```sh
 k8s-parallel-exec -kubeconfig ~/.kube/config -c cassandra -l app=cassandra nodetool status
 ```
 This command would execute `nodetool status` on all the Cassandra containers in pods with the label "app=cassandra" in parallel, and then aggregate and display the results.
+
+If authentication is enabled and you don't want to expose credentials, you may have to do things like the following:
+
+```
+KPE_LABELS="cassandra-cluster-component=cassandra
+,cassandra-cluster-instance=test-cluster"
+k8s-parallel-exec -kubeconfig ~/.kube/kind-kcfg -l $KPE_LABELS -c cassandra -- bash -c 'nodetool --ssl -u $(cat /etc/cassandra-auth-config/admin-role) -pw $(cat /etc/cassandra-auth-config/admin-password) status'
+```
+
+Currently working on a way to make this better...
 
 ## Possible Features
 
