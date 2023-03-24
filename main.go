@@ -38,15 +38,15 @@ const (
 )
 
 type PodResult struct {
-	PodName string
-	Output  string
-	Error   error
+	podName string
+	output  string
+	err     error
 }
 
 type ByPodName []PodResult
 
 func (p ByPodName) Len() int           { return len(p) }
-func (p ByPodName) Less(i, j int) bool { return p[i].PodName < p[j].PodName }
+func (p ByPodName) Less(i, j int) bool { return p[i].podName < p[j].podName }
 func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func main() {
@@ -113,11 +113,15 @@ func main() {
 	sort.Sort(ByPodName(results))
 
 	for _, result := range results {
-		fmt.Printf("%sPod %s\n%s%s",
-			colorize(divColor, divText),
-			colorize(podNameColor, result.PodName),
-			colorize(divColor, divText),
-			result.Output)
+		if result.err != nil {
+			fmt.Printf("Error executing command on pod %s: %v\n%s", result.podName, err, result.output)
+		} else {
+			fmt.Printf("%sPod %s\n%s%s",
+				colorize(divColor, divText),
+				colorize(podNameColor, result.podName),
+				colorize(divColor, divText),
+				result.output)
+		}
 	}
 }
 
