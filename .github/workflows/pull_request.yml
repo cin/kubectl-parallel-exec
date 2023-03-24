@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  run-tests:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,5 +27,8 @@ jobs:
       - name: Go Mod Download
         run: go mod download
 
-      - name: Go Build
-        run: go build -o k8s-parallel-exec
+      - name: Go Build amd64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8s-parallel-exec-amd64
+
+      - name: Go Build arm64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o k8s-parallel-exec-arm64
