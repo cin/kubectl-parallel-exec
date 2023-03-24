@@ -32,9 +32,16 @@ jobs:
     - name: Go Build arm64
       run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o k8s-parallel-exec-arm64
 
-    - name: Publish k8s-parallel-exec to assets
+    - name: Publish k8s-parallel-exec to amd64 assets
       uses: skx/github-action-publish-binaries@release-2.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        args: './k8s-parallel-exec-*'
+        args: './k8s-parallel-exec-amd64'
+
+    - name: Publish k8s-parallel-exec to arm64 assets
+      uses: skx/github-action-publish-binaries@release-2.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: './k8s-parallel-exec-arm64'
