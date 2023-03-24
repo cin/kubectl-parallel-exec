@@ -1,3 +1,4 @@
+![Project Logo](./assets/logo.png)
 # k8s-parallel-exec
 
 [![Release Workflow](https://github.com/cin/k8s-parallel-exec/actions/workflows/release.yml/badge.svg)](https://github.com/cin/k8s-parallel-exec/actions/workflows/release.yml)
