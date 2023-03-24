@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -35,6 +36,18 @@ const (
 	divColor     = BrightYellow
 	podNameColor = BrightCyan
 )
+
+type PodResult struct {
+	PodName string
+	Output  string
+	Error   error
+}
+
+type ByPodName []PodResult
+
+func (p ByPodName) Len() int           { return len(p) }
+func (p ByPodName) Less(i, j int) bool { return p[i].PodName < p[j].PodName }
+func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "Path to the kubeconfig file")
@@ -79,30 +92,32 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan string, len(pods.Items))
+	resultsChan := make(chan PodResult, len(pods.Items))
 
 	for _, pod := range pods.Items {
 		wg.Add(1)
 		go func(p v1.Pod) {
 			defer wg.Done()
-			output, err := execCommand(config, clientset, p, *containerFlag, args)
-			if err != nil {
-				results <- fmt.Sprintf("Error executing command on pod %s: %v", p.Name, err)
-			} else {
-				results <- fmt.Sprintf("%sPod %s\n%s%s",
-					colorize(divColor, divText),
-					colorize(podNameColor, p.Name),
-					colorize(divColor, divText),
-					output)
-			}
+			resultsChan <- execCommand(config, clientset, p, *containerFlag, args)
 		}(pod)
 	}
 
 	wg.Wait()
-	close(results)
+	close(resultsChan)
 
-	for result := range results {
-		fmt.Println(result)
+	var results []PodResult
+	for result := range resultsChan {
+		results = append(results, result)
+	}
+
+	sort.Sort(ByPodName(results))
+
+	for _, result := range results {
+		fmt.Printf("%sPod %s\n%s%s",
+			colorize(divColor, divText),
+			colorize(podNameColor, result.PodName),
+			colorize(divColor, divText),
+			result.Output)
 	}
 }
 
@@ -110,7 +125,7 @@ func colorize(colorCode ColorCode, text string) string {
 	return fmt.Sprintf("\033[%dm%s\033[0m", colorCode, text)
 }
 
-func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Pod, container string, command []string) (string, error) {
+func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Pod, container string, command []string) PodResult {
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod.Name).
@@ -125,7 +140,7 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 
 	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
-		return "", err
+		return PodResult{pod.Name, "", err}
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -135,12 +150,12 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 	})
 
 	if err != nil {
-		return "", err
+		return PodResult{pod.Name, "", err}
 	}
 
 	if stderr.Len() > 0 {
-		return stdout.String(), fmt.Errorf("stderr: %s", stderr.String())
+		return PodResult{pod.Name, stdout.String(), fmt.Errorf("stderr: %s", stderr.String())}
 	}
 
-	return stdout.String(), nil
+	return PodResult{pod.Name, stdout.String(), nil}
 }
