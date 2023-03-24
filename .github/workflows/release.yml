@@ -59,6 +59,7 @@ jobs:
 
         function update_sha {
           local new_sha=$(sha256sum $1 | awk '{print $1}')
+          echo "sha256 for $1 is $new_sha"
           gawk -i inplace -v platform="$1" -v new_sha="$new_sha" '
             index($0, platform) {
               print; getline; sub(/sha256 ".*"/, "sha256 \"" new_sha "\"");
