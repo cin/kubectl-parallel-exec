@@ -1,5 +1,7 @@
 # k8s-parallel-exec
 
+[![Release Workflow](https://github.com/cin/k8s-parallel-exec/actions/workflows/release.yml/badge.svg)](https://github.com/cin/k8s-parallel-exec/actions/workflows/release.yml)
+
 A mostly GPT-4 created Golang-based tool for executing commands in parallel on Kubernetes pods with specified labels, similar to GNU's `parallel` tool. GPT-4 even helped debug, name the project, create this README (aside from this), create a logo (when DALL-E's not overloaded), and craft the announcement tweet for the project.
 
 ## Features
