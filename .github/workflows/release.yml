@@ -27,16 +27,25 @@ jobs:
       run: go mod download
 
     - name: Go Build linux/amd64
-      run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8s-parallel-exec-linux-amd64
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8s-parallel-exec-linux-amd64
+        KPE_LINUX_AMD64_SHA256=$(sha256sum k8s-parallel-exec-linux-amd64 | awk '{print $1}')
 
     - name: Go Build linux/arm64
-      run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o k8s-parallel-exec-linux-arm64
+      run: |
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o k8s-parallel-exec-linux-arm64
+        KPE_LINUX_ARM64_SHA256=$(sha256sum k8s-parallel-exec-linux-arm64 | awk '{print $1}')
 
     - name: Go Build darwin/amd64
-      run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o k8s-parallel-exec-darwin-amd64
+      run: |
+        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o k8s-parallel-exec-darwin-amd64
+        KPE_DARWIN_AMD64_SHA256=$(sha256sum k8s-parallel-exec-darwin-amd64 | awk '{print $1}')
+        
 
     - name: Go Build darwin/arm64
-      run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o k8s-parallel-exec-darwin-arm64
+      run: |
+        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o k8s-parallel-exec-darwin-arm64
+        KPE_DARWIN_ARM64_SHA256=$(sha256sum k8s-parallel-exec-darwin-arm64 | awk '{print $1}')
 
     - name: Publish k8s-parallel-exec builds to assets
       uses: skx/github-action-publish-binaries@release-2.0
@@ -58,20 +67,17 @@ jobs:
         sed -i "s|version \"[^\"]*\"|version \"${NEW_VERSION}\"|g" "${FORMULA_FILE}"
 
         function update_sha {
-          which sha256sum
-          ls -al $1
-          local new_sha=$(sha256sum $1 | awk '{print $1}')
-          echo "sha256 for $1 is $new_sha"
-          gawk -i inplace -v platform="$1" -v new_sha="$new_sha" '
+          echo "sha256 for $1 is $2"
+          gawk -i inplace -v platform="$1" -v new_sha="$2" '
             index($0, platform) {
               print; getline; sub(/sha256 ".*"/, "sha256 \"" new_sha "\"");
             }1' "${FORMULA_FILE}"
         }
 
-        update_sha k8s-parallel-exec-linux-amd64
-        update_sha k8s-parallel-exec-linux-arm64
-        update_sha k8s-parallel-exec-darwin-amd64
-        update_sha k8s-parallel-exec-darwin-arm64
+        update_sha k8s-parallel-exec-linux-amd64 $KPE_LINUX_AMD64_SHA256
+        update_sha k8s-parallel-exec-linux-arm64 $KPE_LINUX_ARM64_SHA256
+        update_sha k8s-parallel-exec-darwin-amd64 $KPE_DARWIN_AMD64_SHA256
+        update_sha k8s-parallel-exec-darwin-arm64 $KPE_DARWIN_AMD64_SHA256
 
     - name: Commit and push changes
       run: |
