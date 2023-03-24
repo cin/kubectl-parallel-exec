@@ -58,6 +58,8 @@ jobs:
         sed -i "s|version \"[^\"]*\"|version \"${NEW_VERSION}\"|g" "${FORMULA_FILE}"
 
         function update_sha {
+          which sha256sum
+          ls -al $1
           local new_sha=$(sha256sum $1 | awk '{print $1}')
           echo "sha256 for $1 is $new_sha"
           gawk -i inplace -v platform="$1" -v new_sha="$new_sha" '
