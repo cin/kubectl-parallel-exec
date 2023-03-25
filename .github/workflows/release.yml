@@ -28,44 +28,44 @@ jobs:
 
     - name: Go Build linux/amd64
       run: |
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o k8s-parallel-exec-linux-amd64
-        tar zcf k8s-parallel-exec-linux-amd64.tgz k8s-parallel-exec-linux-amd64
-        echo "KPE_LINUX_AMD64_SHA256=$(sha256sum k8s-parallel-exec-linux-amd64.tgz | awk '{print $1}')" >> $GITHUB_ENV
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o kubectl-parallel-exec-linux-amd64
+        tar zcf kubectl-parallel-exec-linux-amd64.tgz kubectl-parallel-exec-linux-amd64
+        echo "KPE_LINUX_AMD64_SHA256=$(sha256sum kubectl-parallel-exec-linux-amd64.tgz | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Go Build linux/arm64
       run: |
-        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o k8s-parallel-exec-linux-arm64
-        tar zcf k8s-parallel-exec-linux-arm64.tgz k8s-parallel-exec-linux-arm64
-        echo "KPE_LINUX_ARM64_SHA256=$(sha256sum k8s-parallel-exec-linux-arm64.tgz | awk '{print $1}')" >> $GITHUB_ENV
+        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o kubectl-parallel-exec-linux-arm64
+        tar zcf kubectl-parallel-exec-linux-arm64.tgz kubectl-parallel-exec-linux-arm64
+        echo "KPE_LINUX_ARM64_SHA256=$(sha256sum kubectl-parallel-exec-linux-arm64.tgz | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Go Build darwin/amd64
       run: |
-        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o k8s-parallel-exec-darwin-amd64
-        tar zcf k8s-parallel-exec-darwin-amd64.tgz k8s-parallel-exec-darwin-amd64
-        echo "KPE_DARWIN_AMD64_SHA256=$(sha256sum k8s-parallel-exec-darwin-amd64.tgz | awk '{print $1}')" >> $GITHUB_ENV
+        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o kubectl-parallel-exec-darwin-amd64
+        tar zcf kubectl-parallel-exec-darwin-amd64.tgz kubectl-parallel-exec-darwin-amd64
+        echo "KPE_DARWIN_AMD64_SHA256=$(sha256sum kubectl-parallel-exec-darwin-amd64.tgz | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Go Build darwin/arm64
       run: |
-        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o k8s-parallel-exec-darwin-arm64
-        tar zcf k8s-parallel-exec-darwin-arm64.tgz k8s-parallel-exec-darwin-arm64
-        echo "KPE_DARWIN_ARM64_SHA256=$(sha256sum k8s-parallel-exec-darwin-arm64.tgz | awk '{print $1}')" >> $GITHUB_ENV
+        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o kubectl-parallel-exec-darwin-arm64
+        tar zcf kubectl-parallel-exec-darwin-arm64.tgz kubectl-parallel-exec-darwin-arm64
+        echo "KPE_DARWIN_ARM64_SHA256=$(sha256sum kubectl-parallel-exec-darwin-arm64.tgz | awk '{print $1}')" >> $GITHUB_ENV
 
-    - name: Publish k8s-parallel-exec builds to assets
+    - name: Publish kubectl-parallel-exec builds to assets
       uses: cin/github-action-publish-binaries@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        args: './k8s-parallel-exec-*.tgz'
+        args: './kubectl-parallel-exec-*.tgz'
 
     - name: Checkout Homebrew tap repository
       uses: actions/checkout@v2
       with:
-        repository: cin/homebrew-k8s-parallel-exec
+        repository: cin/homebrew-kubectl-parallel-exec
         token: ${{ secrets.HOMEBREW_UPDATE_TOKEN }}
 
     - name: Update Homebrew formula
       run: |
-        FORMULA_FILE="k8s-parallel-exec.rb"
+        FORMULA_FILE="kubectl-parallel-exec.rb"
         NEW_VERSION="${{ github.event.release.tag_name }}"
         sed -i "s|version \"[^\"]*\"|version \"${NEW_VERSION}\"|g" "${FORMULA_FILE}"
 
@@ -77,15 +77,15 @@ jobs:
             }1' "${FORMULA_FILE}"
         }
 
-        update_sha k8s-parallel-exec-linux-amd64.tgz ${{ env.KPE_LINUX_AMD64_SHA256 }}
-        update_sha k8s-parallel-exec-linux-arm64.tgz ${{ env.KPE_LINUX_ARM64_SHA256 }}
-        update_sha k8s-parallel-exec-darwin-amd64.tgz ${{ env.KPE_DARWIN_AMD64_SHA256 }}
-        update_sha k8s-parallel-exec-darwin-arm64.tgz ${{ env.KPE_DARWIN_ARM64_SHA256 }}
+        update_sha kubectl-parallel-exec-linux-amd64.tgz ${{ env.KPE_LINUX_AMD64_SHA256 }}
+        update_sha kubectl-parallel-exec-linux-arm64.tgz ${{ env.KPE_LINUX_ARM64_SHA256 }}
+        update_sha kubectl-parallel-exec-darwin-amd64.tgz ${{ env.KPE_DARWIN_AMD64_SHA256 }}
+        update_sha kubectl-parallel-exec-darwin-arm64.tgz ${{ env.KPE_DARWIN_ARM64_SHA256 }}
 
     - name: Commit and push changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add "k8s-parallel-exec.rb"
-        git commit -m "Update k8s-parallel-exec to ${{ github.event.release.tag_name }}"
+        git add "kubectl-parallel-exec.rb"
+        git commit -m "Update kubectl-parallel-exec to ${{ github.event.release.tag_name }}"
         git push

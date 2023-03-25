@@ -28,4 +28,4 @@ jobs:
         run: go mod download
 
       - name: Go Build amd64
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8s-parallel-exec-amd64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o kubectl-parallel-exec-amd64
