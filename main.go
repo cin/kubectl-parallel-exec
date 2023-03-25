@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,6 +42,7 @@ type PodResult struct {
 	podName string
 	output  string
 	err     error
+	elapsed time.Duration
 }
 
 type ByPodName []PodResult
@@ -114,11 +116,18 @@ func main() {
 
 	for _, result := range results {
 		if result.err != nil {
-			fmt.Printf("Error executing command on pod %s: %v\n%s", result.podName, err, result.output)
-		} else {
-			fmt.Printf("%sPod %s\n%s%s",
+			fmt.Printf("%sPod %s - %s\n%sError executing command: %v\n%s",
 				colorize(divColor, divText),
 				colorize(podNameColor, result.podName),
+				result.elapsed.String(),
+				colorize(divColor, divText),
+				err,
+				result.output)
+		} else {
+			fmt.Printf("%sPod %s - %s\n%s%s",
+				colorize(divColor, divText),
+				colorize(podNameColor, result.podName),
+				result.elapsed.String(),
 				colorize(divColor, divText),
 				result.output)
 		}
@@ -130,6 +139,7 @@ func colorize(colorCode ColorCode, text string) string {
 }
 
 func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Pod, container string, command []string) PodResult {
+	start := time.Now()
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod.Name).
@@ -144,7 +154,7 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 
 	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
 	if err != nil {
-		return PodResult{pod.Name, "", err}
+		return PodResult{pod.Name, "", err, time.Since(start)}
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -154,12 +164,12 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 	})
 
 	if err != nil {
-		return PodResult{pod.Name, "", err}
+		return PodResult{pod.Name, "", err, time.Since(start)}
 	}
 
 	if stderr.Len() > 0 {
-		return PodResult{pod.Name, stdout.String(), fmt.Errorf("stderr: %s", stderr.String())}
+		return PodResult{pod.Name, stdout.String(), fmt.Errorf("stderr: %s", stderr.String()), time.Since(start)}
 	}
 
-	return PodResult{pod.Name, stdout.String(), nil}
+	return PodResult{pod.Name, stdout.String(), nil, time.Since(start)}
 }
