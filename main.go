@@ -38,6 +38,8 @@ const (
 	podNameColor = BrightCyan
 )
 
+var version = "dev"
+
 type PodResult struct {
 	podName string
 	output  string
@@ -56,7 +58,13 @@ func main() {
 	container := flag.String("c", "", "Container to execute the command against")
 	labelSelector := flag.String("l", "", "Label selector to filter pods")
 	namespace := flag.String("n", "", "Namespace filter")
+	versionFlag := flag.Bool("v", false, "print the version")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	if *container == "" {
 		fmt.Println("Error: container name must be specified with -c")
