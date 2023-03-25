@@ -19,23 +19,37 @@ A mostly GPT-4 created Golang-based tool for executing commands in parallel on K
 
 ## Installation
 
-1. Clone the repository:
+### Homebrew
+
+You can install `k8s-parallel-exec` using Homebrew on macOS and Linux:
+
+```bash
+brew install cin/k8s-parallel-exec/k8s-parallel-exec
+```
+
+### From Source
+
+You can also build and install the k8s-parallel-exec from source. To do this, follow these steps:
+
+1. Ensure that you have Go installed on your system. You can check this by running go version. If you don't have Go installed, you can follow the installation instructions on the [official Go website](https://golang.org/doc/install).
+
+2. Clone the repository:
 
 ```sh
 git clone https://github.com/your-github-username/k8s-parallel-exec.git
 ```
 
-2. Change into the project directory:
+3. Change into the project directory:
 ```sh
 cd k8s-parallel-exec
 ```
 
-3. Build the binary:
+4. Build the binary:
 ```sh
 go build -o k8s-parallel-exec
 ```
 
-4. Move the binary to a directory in your PATH (optional):
+5. Move the binary to a directory in your PATH (optional):
 ```sh
 sudo mv k8s-parallel-exec /usr/local/bin/
 ```
@@ -57,7 +71,7 @@ This command would execute `nodetool status` on all the Cassandra containers in 
 
 If authentication is enabled and you don't want to expose credentials, you may have to do things like the following:
 
-```
+```bash
 KPE_LABELS="cassandra-cluster-component=cassandra
 ,cassandra-cluster-instance=test-cluster"
 k8s-parallel-exec -kubeconfig ~/.kube/kind-kcfg -l $KPE_LABELS -c cassandra -- bash -c 'nodetool --ssl -u $(cat /etc/cassandra-auth-config/admin-role) -pw $(cat /etc/cassandra-auth-config/admin-password) status'
