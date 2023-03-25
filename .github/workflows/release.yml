@@ -29,23 +29,23 @@ jobs:
     - name: Go Build linux/amd64
       run: |
         CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o k8s-parallel-exec-linux-amd64
-        KPE_LINUX_AMD64_SHA256=$(sha256sum k8s-parallel-exec-linux-amd64 | awk '{print $1}')
+        echo "KPE_LINUX_AMD64_SHA256=$(sha256sum k8s-parallel-exec-linux-amd64 | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Go Build linux/arm64
       run: |
         CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o k8s-parallel-exec-linux-arm64
-        KPE_LINUX_ARM64_SHA256=$(sha256sum k8s-parallel-exec-linux-arm64 | awk '{print $1}')
+        echo "KPE_LINUX_ARM64_SHA256=$(sha256sum k8s-parallel-exec-linux-arm64 | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Go Build darwin/amd64
       run: |
         CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o k8s-parallel-exec-darwin-amd64
-        KPE_DARWIN_AMD64_SHA256=$(sha256sum k8s-parallel-exec-darwin-amd64 | awk '{print $1}')
+        echo "KPE_DARWIN_AMD64_SHA256=$(sha256sum k8s-parallel-exec-darwin-amd64 | awk '{print $1}')" >> $GITHUB_ENV
         
 
     - name: Go Build darwin/arm64
       run: |
         CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o k8s-parallel-exec-darwin-arm64
-        KPE_DARWIN_ARM64_SHA256=$(sha256sum k8s-parallel-exec-darwin-arm64 | awk '{print $1}')
+        echo "KPE_DARWIN_ARM64_SHA256=$(sha256sum k8s-parallel-exec-darwin-arm64 | awk '{print $1}')" >> $GITHUB_ENV
 
     - name: Publish k8s-parallel-exec builds to assets
       uses: skx/github-action-publish-binaries@release-2.0
@@ -74,10 +74,10 @@ jobs:
             }1' "${FORMULA_FILE}"
         }
 
-        update_sha k8s-parallel-exec-linux-amd64 $KPE_LINUX_AMD64_SHA256
-        update_sha k8s-parallel-exec-linux-arm64 $KPE_LINUX_ARM64_SHA256
-        update_sha k8s-parallel-exec-darwin-amd64 $KPE_DARWIN_AMD64_SHA256
-        update_sha k8s-parallel-exec-darwin-arm64 $KPE_DARWIN_AMD64_SHA256
+        update_sha k8s-parallel-exec-linux-amd64 ${{ env.KPE_LINUX_AMD64_SHA256 }}
+        update_sha k8s-parallel-exec-linux-arm64 ${{ env.KPE_LINUX_ARM64_SHA256 }}
+        update_sha k8s-parallel-exec-darwin-amd64 ${{ env.KPE_DARWIN_AMD64_SHA256 }}
+        update_sha k8s-parallel-exec-darwin-arm64 ${{ env.KPE_DARWIN_ARM64_SHA256 }}
 
     - name: Commit and push changes
       run: |
