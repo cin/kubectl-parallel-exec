@@ -1,4 +1,4 @@
-module github.com/cin/k8s-parallel-exec
+module github.com/cin/kubectl-parallel-exec
 
 go 1.20
 
