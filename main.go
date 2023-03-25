@@ -53,16 +53,17 @@ func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "Path to the kubeconfig file")
-	containerFlag := flag.String("c", "", "Container to execute the command against")
-	labelFlag := flag.String("l", "", "Label selector to filter pods")
+	container := flag.String("c", "", "Container to execute the command against")
+	labelSelector := flag.String("l", "", "Label selector to filter pods")
+	namespace := flag.String("n", "", "Namespace filter")
 	flag.Parse()
 
-	if *containerFlag == "" {
+	if *container == "" {
 		fmt.Println("Error: container name must be specified with -c")
 		os.Exit(1)
 	}
 
-	if *labelFlag == "" {
+	if *labelSelector == "" {
 		fmt.Println("Error: label selector must be specified with -l")
 		os.Exit(1)
 	}
@@ -86,8 +87,8 @@ func main() {
 		panic(err)
 	}
 
-	pods, err := clientset.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{
-		LabelSelector: *labelFlag,
+	pods, err := clientset.CoreV1().Pods(*namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: *labelSelector,
 	})
 	if err != nil {
 		panic(err)
@@ -100,7 +101,7 @@ func main() {
 		wg.Add(1)
 		go func(p v1.Pod) {
 			defer wg.Done()
-			resultsChan <- execCommand(config, clientset, p, *containerFlag, args)
+			resultsChan <- execCommand(config, clientset, p, *container, args)
 		}(pod)
 	}
 
