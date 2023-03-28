@@ -56,7 +56,7 @@ sudo mv kubectl-parallel-exec /usr/local/bin/
 
 ## Usage
 ```sh
-kubectl-parallel-exec -kubeconfig /path/to/kubeconfig -c container-name -l label-selector command-to-execute
+kubectl-parallel-exec -kubeconfig /path/to/kubeconfig -c container-name -l label-selector -n namespace command-to-execute
 ```
 - `-kubeconfig`: Path to the kubeconfig file. If not provided, in-cluster configuration will be used.
 - `-c`: Container to execute the command against.
