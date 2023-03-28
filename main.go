@@ -58,7 +58,7 @@ func main() {
 	container := flag.String("c", "", "Container to execute the command against")
 	labelSelector := flag.String("l", "", "Label selector to filter pods")
 	namespace := flag.String("n", "", "Namespace filter")
-	versionFlag := flag.Bool("v", false, "print the version")
+	versionFlag := flag.Bool("v", false, "Print the version")
 	flag.Parse()
 
 	if *versionFlag {

@@ -61,6 +61,8 @@ kubectl-parallel-exec -kubeconfig /path/to/kubeconfig -c container-name -l label
 - `-kubeconfig`: Path to the kubeconfig file. If not provided, in-cluster configuration will be used.
 - `-c`: Container to execute the command against.
 - `-l`: Label selector to filter the pods.
+- `-n`: Namespace filter
+- `-v`: Print the version
 - `command-to-execute`: The command to run inside the specified container in each pod.
 
 Example
