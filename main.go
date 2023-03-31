@@ -96,7 +96,6 @@ func main() {
 		}
 	}
 
-	fmt.Println("hi")
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err)
@@ -109,7 +108,6 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("hi")
 	var wg sync.WaitGroup
 	resultsChan := make(chan PodResult, len(pods.Items))
 
@@ -129,7 +127,6 @@ func main() {
 		results = append(results, result)
 	}
 
-	fmt.Println("hi")
 	sort.Sort(ByPodName(results))
 
 	for _, result := range results {
