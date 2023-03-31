@@ -82,11 +82,11 @@ func main() {
 		fmt.Println("Error: command to execute is required")
 		os.Exit(1)
 	}
-	fmt.Printf("before kubeconfig: %v", *kubeconfig)
+
 	if kubeconfig == nil || len(*kubeconfig) == 0 && len(kubeconfigEnv) > 0 {
 		kubeconfig = &kubeconfigEnv
 	}
-	fmt.Printf("after kubeconfig: %v", *kubeconfig)
+	fmt.Printf("kubeconfig: %v", *kubeconfig)
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
