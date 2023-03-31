@@ -58,7 +58,7 @@ sudo mv kubectl-parallel-exec /usr/local/bin/
 ```sh
 kubectl-parallel-exec -kubeconfig /path/to/kubeconfig -c container-name -l label-selector -n namespace command-to-execute
 ```
-- `-kubeconfig`: Path to the kubeconfig file. If not provided, in-cluster configuration will be used.
+- `-kubeconfig`: Path to the kubeconfig file. If not provided, KUBECONFIG will be used if defined and then in-cluster configuration will be used.
 - `-c`: Container to execute the command against.
 - `-l`: Label selector to filter the pods.
 - `-n`: Namespace filter
@@ -74,12 +74,17 @@ This command would execute `nodetool status` on all the Cassandra containers in 
 If authentication is enabled and you don't want to expose credentials, you may have to do things like the following:
 
 ```bash
-KPE_LABELS="cassandra-cluster-component=cassandra
-,cassandra-cluster-instance=test-cluster"
-kubectl-parallel-exec -kubeconfig ~/.kube/kind-kcfg -l $KPE_LABELS -c cassandra -- bash -c 'nodetool --ssl -u $(cat /etc/cassandra-auth-config/admin-role) -pw $(cat /etc/cassandra-auth-config/admin-password) status'
+export KPE_OPTS="-l cassandra-cluster-component=cassandra,cassandra-cluster-instance=test-cluster"
+alias kpe="k parallel exec $KPE_OPTS"
+
+function knt() {
+  local nodetool_command="${*}"
+  local nodetool_auth_opts="--ssl -u \$(cat /etc/cassandra-auth-config/admin-role) -pw \$(cat /etc/cassandra-auth-config/admin-password)"
+  kpe -c cassandra -- bash -c "nodetool ${nodetool_auth_opts} ${nodetool_command}"
+}
 ```
 
-Currently working on a way to make this better...
+With this setup, modify `KPE_OPTS` depending on the target pod set; `KUBECONFIG` determines which cluster is being operated against.
 
 ## Possible Features
 
@@ -108,4 +113,4 @@ Save and load command sets: Allow users to save sets of commands and their assoc
 These features could enhance the usability and flexibility of kubectl-parallel-exec, making it an even more valuable tool for Kubernetes users.
 
 ## Credits
-The initial implementation for this project were provided by ChatGPT from OpenAI. Other than the idea for the project, ChatGPT created nearly all of the code in this repo (even the README.md). 
+The initial implementation for this project were provided by ChatGPT from OpenAI. Other than the idea for the project, ChatGPT created nearly all of the code in this repo (even the README.md).
