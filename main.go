@@ -54,6 +54,7 @@ func (p ByPodName) Less(i, j int) bool { return p[i].podName < p[j].podName }
 func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func main() {
+	kubeconfigEnv := os.Getenv("KUBECONFIG")
 	kubeconfig := flag.String("kubeconfig", "", "Path to the kubeconfig file")
 	container := flag.String("c", "", "Container to execute the command against")
 	labelSelector := flag.String("l", "", "Label selector to filter pods")
@@ -81,6 +82,11 @@ func main() {
 		fmt.Println("Error: command to execute is required")
 		os.Exit(1)
 	}
+	fmt.Printf("before kubeconfig: %v", *kubeconfig)
+	if kubeconfig == nil || len(*kubeconfig) == 0 && len(kubeconfigEnv) > 0 {
+		kubeconfig = &kubeconfigEnv
+	}
+	fmt.Printf("after kubeconfig: %v", *kubeconfig)
 
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
@@ -90,6 +96,7 @@ func main() {
 		}
 	}
 
+	fmt.Println("hi")
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err)
@@ -102,6 +109,7 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Println("hi")
 	var wg sync.WaitGroup
 	resultsChan := make(chan PodResult, len(pods.Items))
 
@@ -121,6 +129,7 @@ func main() {
 		results = append(results, result)
 	}
 
+	fmt.Println("hi")
 	sort.Sort(ByPodName(results))
 
 	for _, result := range results {
