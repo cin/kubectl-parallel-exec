@@ -13,7 +13,7 @@ A mostly GPT-4 created Golang-based tool for executing commands in parallel on K
 
 ## Requirements
 
-- Go 1.16 or higher
+- Go 1.26 or higher
 - A valid kubeconfig file or in-cluster configuration
 - Access to a Kubernetes cluster
 
@@ -36,7 +36,7 @@ You can also build and install the kubectl-parallel-exec from source. To do this
 2. Clone the repository:
 
 ```sh
-git clone https://github.com/your-github-username/kubectl-parallel-exec.git
+git clone https://github.com/cin/kubectl-parallel-exec.git
 ```
 
 3. Change into the project directory:

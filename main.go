@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"flag"
@@ -54,7 +53,6 @@ func (p ByPodName) Less(i, j int) bool { return p[i].podName < p[j].podName }
 func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func main() {
-	kubeconfigEnv := os.Getenv("KUBECONFIG")
 	kubeconfig := flag.String("kubeconfig", "", "Path to the kubeconfig file")
 	container := flag.String("c", "", "Container to execute the command against")
 	labelSelector := flag.String("l", "", "Label selector to filter pods")
@@ -83,12 +81,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	if kubeconfig == nil || len(*kubeconfig) == 0 && len(kubeconfigEnv) > 0 {
-		kubeconfig = &kubeconfigEnv
-	}
-	fmt.Printf("kubeconfig: %v", *kubeconfig)
+	kubeconfigPath := selectKubeconfig(*kubeconfig, os.Getenv("KUBECONFIG"))
+	fmt.Printf("kubeconfig: %v", kubeconfigPath)
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		config, err = rest.InClusterConfig()
 		if err != nil {
@@ -130,27 +126,34 @@ func main() {
 	sort.Sort(ByPodName(results))
 
 	for _, result := range results {
-		if result.err != nil {
-			fmt.Printf("%sPod %s - %s\n%sError executing command: %v\n%s",
-				colorize(divColor, divText),
-				colorize(podNameColor, result.podName),
-				result.elapsed.String(),
-				colorize(divColor, divText),
-				err,
-				result.output)
-		} else {
-			fmt.Printf("%sPod %s - %s\n%s%s",
-				colorize(divColor, divText),
-				colorize(podNameColor, result.podName),
-				result.elapsed.String(),
-				colorize(divColor, divText),
-				result.output)
-		}
+		fmt.Print(formatPodResult(result))
 	}
+}
+
+func selectKubeconfig(flagValue, envValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+
+	return envValue
 }
 
 func colorize(colorCode ColorCode, text string) string {
 	return fmt.Sprintf("\033[%dm%s\033[0m", colorCode, text)
+}
+
+func formatPodResult(result PodResult) string {
+	header := fmt.Sprintf("%sPod %s - %s\n%s",
+		colorize(divColor, divText),
+		colorize(podNameColor, result.podName),
+		result.elapsed.String(),
+		colorize(divColor, divText))
+
+	if result.err != nil {
+		return fmt.Sprintf("%sError executing command: %v\n%s", header, result.err, result.output)
+	}
+
+	return header + result.output
 }
 
 func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Pod, container string, command []string) PodResult {
@@ -174,8 +177,8 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 
 	var stdout, stderr bytes.Buffer
 	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
-		Stdout: bufio.NewWriter(&stdout),
-		Stderr: bufio.NewWriter(&stderr),
+		Stdout: &stdout,
+		Stderr: &stderr,
 	})
 
 	if err != nil {
