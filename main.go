@@ -5,13 +5,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -19,22 +21,15 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-type ColorCode int
-
 const (
-	BrightRed ColorCode = iota + 91
-	BrightGreen
-	BrightYellow
-	BrightBlue
-	BrightMagenta
-	BrightCyan
-	BrightWhite
-)
+	brightYellow = 93
+	brightCyan   = 96
 
-const (
 	divText      = "----------------------------------------------------\n"
-	divColor     = BrightYellow
-	podNameColor = BrightCyan
+	divColor     = brightYellow
+	podNameColor = brightCyan
+
+	defaultConcurrency = 16
 )
 
 var version = "dev"
@@ -46,17 +41,13 @@ type PodResult struct {
 	elapsed time.Duration
 }
 
-type ByPodName []PodResult
-
-func (p ByPodName) Len() int           { return len(p) }
-func (p ByPodName) Less(i, j int) bool { return p[i].podName < p[j].podName }
-func (p ByPodName) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
 func main() {
 	kubeconfig := flag.String("kubeconfig", "", "Path to the kubeconfig file")
 	container := flag.String("c", "", "Container to execute the command against")
 	labelSelector := flag.String("l", "", "Label selector to filter pods")
 	namespace := flag.String("n", "", "Namespace filter")
+	concurrency := flag.Int("j", defaultConcurrency, "Maximum concurrent execs (0 = unlimited)")
+	timeout := flag.Duration("timeout", 0, "Per-pod exec timeout (0 = no timeout)")
 	versionFlag := flag.Bool("v", false, "Print the version")
 	flag.Parse()
 
@@ -66,68 +57,65 @@ func main() {
 	}
 
 	if *container == "" {
-		fmt.Println("Error: container name must be specified with -c")
-		os.Exit(1)
+		fatal("container name must be specified with -c")
 	}
 
 	if *labelSelector == "" {
-		fmt.Println("Error: label selector must be specified with -l")
-		os.Exit(1)
+		fatal("label selector must be specified with -l")
+	}
+
+	if *concurrency < 0 {
+		fatal("concurrency (-j) must be >= 0")
 	}
 
 	args := flag.Args()
 	if len(args) == 0 {
-		fmt.Println("Error: command to execute is required")
-		os.Exit(1)
+		fatal("command to execute is required")
 	}
 
 	kubeconfigPath := selectKubeconfig(*kubeconfig, os.Getenv("KUBECONFIG"))
-	fmt.Printf("kubeconfig: %v", kubeconfigPath)
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		config, err = rest.InClusterConfig()
 		if err != nil {
-			panic(err)
+			fatal("failed to load kubeconfig: %v", err)
 		}
 	}
 
+	tuneClientThroughput(config, *concurrency)
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err)
+		fatal("failed to create kubernetes client: %v", err)
 	}
 
 	pods, err := clientset.CoreV1().Pods(*namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: *labelSelector,
 	})
 	if err != nil {
-		panic(err)
+		fatal("failed to list pods: %v", err)
 	}
 
-	var wg sync.WaitGroup
-	resultsChan := make(chan PodResult, len(pods.Items))
+	results := runParallelExec(config, clientset, pods.Items, *container, args, *concurrency, *timeout)
+	sortPodResults(results)
 
-	for _, pod := range pods.Items {
-		wg.Add(1)
-		go func(p v1.Pod) {
-			defer wg.Done()
-			resultsChan <- execCommand(config, clientset, p, *container, args)
-		}(pod)
-	}
-
-	wg.Wait()
-	close(resultsChan)
-
-	var results []PodResult
-	for result := range resultsChan {
-		results = append(results, result)
-	}
-
-	sort.Sort(ByPodName(results))
-
+	failed := false
 	for _, result := range results {
 		fmt.Print(formatPodResult(result))
+		if result.err != nil {
+			failed = true
+		}
 	}
+
+	if failed {
+		os.Exit(1)
+	}
+}
+
+func fatal(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	os.Exit(1)
 }
 
 func selectKubeconfig(flagValue, envValue string) string {
@@ -138,7 +126,69 @@ func selectKubeconfig(flagValue, envValue string) string {
 	return envValue
 }
 
-func colorize(colorCode ColorCode, text string) string {
+func tuneClientThroughput(config *rest.Config, concurrency int) {
+	if concurrency <= 0 {
+		concurrency = defaultConcurrency
+	}
+	config.QPS = float32(concurrency)
+	config.Burst = concurrency * 2
+}
+
+func runParallelExec(
+	config *rest.Config,
+	clientset *kubernetes.Clientset,
+	pods []v1.Pod,
+	container string,
+	command []string,
+	concurrency int,
+	timeout time.Duration,
+) []PodResult {
+	if len(pods) == 0 {
+		return nil
+	}
+
+	limit := concurrency
+	if limit <= 0 {
+		limit = len(pods)
+	}
+
+	sem := make(chan struct{}, limit)
+	resultsChan := make(chan PodResult, len(pods))
+	var wg sync.WaitGroup
+
+	for _, pod := range pods {
+		wg.Add(1)
+		go func(name, ns string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			resultsChan <- execCommand(config, clientset, name, ns, container, command, timeout)
+		}(pod.Name, pod.Namespace)
+	}
+
+	wg.Wait()
+	close(resultsChan)
+
+	results := make([]PodResult, 0, len(pods))
+	for result := range resultsChan {
+		results = append(results, result)
+	}
+	return results
+}
+
+func sortPodResults(results []PodResult) {
+	slices.SortFunc(results, func(a, b PodResult) int {
+		if a.podName < b.podName {
+			return -1
+		}
+		if a.podName > b.podName {
+			return 1
+		}
+		return 0
+	})
+}
+
+func colorize(colorCode int, text string) string {
 	return fmt.Sprintf("\033[%dm%s\033[0m", colorCode, text)
 }
 
@@ -156,12 +206,30 @@ func formatPodResult(result PodResult) string {
 	return header + result.output
 }
 
-func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Pod, container string, command []string) PodResult {
+func combineOutput(stdout, stderr bytes.Buffer) string {
+	out := stdout.String()
+	errOut := stderr.String()
+	if errOut == "" {
+		return out
+	}
+	if out == "" {
+		return errOut
+	}
+	return out + errOut
+}
+
+func execCommand(
+	config *rest.Config,
+	clientset *kubernetes.Clientset,
+	podName, namespace, container string,
+	command []string,
+	timeout time.Duration,
+) PodResult {
 	start := time.Now()
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
-		Name(pod.Name).
-		Namespace(pod.Namespace).
+		Name(podName).
+		Namespace(namespace).
 		SubResource("exec").
 		VersionedParams(&v1.PodExecOptions{
 			Container: container,
@@ -170,24 +238,46 @@ func execCommand(config *rest.Config, clientset *kubernetes.Clientset, pod v1.Po
 			Stderr:    true,
 		}, scheme.ParameterCodec)
 
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	reqURL := req.URL()
+	exec, err := newExecutor(config, reqURL)
 	if err != nil {
-		return PodResult{pod.Name, "", err, time.Since(start)}
+		return PodResult{podName, "", err, time.Since(start)}
+	}
+
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
+	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
 
+	output := combineOutput(stdout, stderr)
 	if err != nil {
-		return PodResult{pod.Name, "", err, time.Since(start)}
+		return PodResult{podName, output, err, time.Since(start)}
 	}
 
-	if stderr.Len() > 0 {
-		return PodResult{pod.Name, stdout.String(), fmt.Errorf("stderr: %s", stderr.String()), time.Since(start)}
+	return PodResult{podName, output, nil, time.Since(start)}
+}
+
+func newExecutor(config *rest.Config, reqURL *url.URL) (remotecommand.Executor, error) {
+	spdyExec, err := remotecommand.NewSPDYExecutor(config, "POST", reqURL)
+	if err != nil {
+		return nil, err
 	}
 
-	return PodResult{pod.Name, stdout.String(), nil, time.Since(start)}
+	// WebSocketExecutor must use GET per RFC 6455 Sec. 4.1.
+	websocketExec, err := remotecommand.NewWebSocketExecutor(config, "GET", reqURL.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return remotecommand.NewFallbackExecutor(websocketExec, spdyExec, func(err error) bool {
+		return httpstream.IsUpgradeFailure(err) || httpstream.IsHTTPSProxyError(err)
+	})
 }
