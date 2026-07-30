@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net/url"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,9 +80,10 @@ func main() {
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
+		kubeconfigErr := err
 		config, err = rest.InClusterConfig()
 		if err != nil {
-			fatal("failed to load kubeconfig: %v", err)
+			fatal("failed to load configuration: %v", errors.Join(kubeconfigErr, err))
 		}
 	}
 
@@ -178,13 +182,7 @@ func runParallelExec(
 
 func sortPodResults(results []PodResult) {
 	slices.SortFunc(results, func(a, b PodResult) int {
-		if a.podName < b.podName {
-			return -1
-		}
-		if a.podName > b.podName {
-			return 1
-		}
-		return 0
+		return cmp.Compare(a.podName, b.podName)
 	})
 }
 
@@ -199,23 +197,22 @@ func formatPodResult(result PodResult) string {
 		result.elapsed.String(),
 		colorize(divColor, divText))
 
-	if result.err != nil {
-		return fmt.Sprintf("%sError executing command: %v\n%s", header, result.err, result.output)
+	output := result.output
+	if output != "" && !strings.HasSuffix(output, "\n") {
+		output += "\n"
 	}
 
-	return header + result.output
+	if result.err != nil {
+		return fmt.Sprintf("%sError executing command: %v\n%s", header, result.err, output)
+	}
+
+	return header + output
 }
 
-func combineOutput(stdout, stderr bytes.Buffer) string {
-	out := stdout.String()
-	errOut := stderr.String()
-	if errOut == "" {
-		return out
-	}
-	if out == "" {
-		return errOut
-	}
-	return out + errOut
+// combineOutput concatenates stdout then stderr; unlike kubectl, the two
+// streams are not interleaved in arrival order.
+func combineOutput(stdout, stderr string) string {
+	return stdout + stderr
 }
 
 func execCommand(
@@ -257,7 +254,7 @@ func execCommand(
 		Stderr: &stderr,
 	})
 
-	output := combineOutput(stdout, stderr)
+	output := combineOutput(stdout.String(), stderr.String())
 	if err != nil {
 		return PodResult{podName, output, err, time.Since(start)}
 	}

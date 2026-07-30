@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -99,6 +98,18 @@ func TestFormatPodResultOmitsErrorPrefixOnSuccess(t *testing.T) {
 	}
 }
 
+func TestFormatPodResultAddsTrailingNewline(t *testing.T) {
+	output := formatPodResult(PodResult{
+		podName: "pod-a",
+		output:  "no trailing newline",
+		elapsed: time.Second,
+	})
+
+	if !strings.HasSuffix(output, "no trailing newline\n") {
+		t.Fatalf("formatPodResult() = %q, want trailing newline appended", output)
+	}
+}
+
 func TestCombineOutputMergesStdoutAndStderr(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -114,10 +125,7 @@ func TestCombineOutputMergesStdoutAndStderr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			stdout.WriteString(tt.stdout)
-			stderr.WriteString(tt.stderr)
-			if got := combineOutput(stdout, stderr); got != tt.want {
+			if got := combineOutput(tt.stdout, tt.stderr); got != tt.want {
 				t.Fatalf("combineOutput() = %q, want %q", got, tt.want)
 			}
 		})
