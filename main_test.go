@@ -81,6 +81,126 @@ func TestFilterRunningPods(t *testing.T) {
 	}
 }
 
+func TestRunParallelExecReturnsResultForEachPod(t *testing.T) {
+	pods := []v1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-a", Namespace: "ns-a"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-b", Namespace: "ns-b"}},
+	}
+
+	results := runParallelExec(pods, 2, func(podName, namespace string) PodResult {
+		return PodResult{podName: podName, output: namespace}
+	})
+
+	if len(results) != len(pods) {
+		t.Fatalf("len(results) = %d, want %d", len(results), len(pods))
+	}
+
+	got := make(map[string]string, len(results))
+	for _, r := range results {
+		got[r.podName] = r.output
+	}
+	if got["pod-a"] != "ns-a" || got["pod-b"] != "ns-b" {
+		t.Fatalf("results = %v, want pod-a:ns-a and pod-b:ns-b", got)
+	}
+}
+
+func TestRunParallelExecEmptyPods(t *testing.T) {
+	results := runParallelExec(nil, 4, func(string, string) PodResult {
+		t.Fatal("exec should not be called with no pods")
+		return PodResult{}
+	})
+	if results != nil {
+		t.Fatalf("runParallelExec(nil pods) = %v, want nil", results)
+	}
+}
+
+func TestRunParallelExecHonorsConcurrencyLimit(t *testing.T) {
+	pods := []v1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-0"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-2"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-3"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-4"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-5"}},
+	}
+	const limit = 2
+
+	started := make(chan struct{}, len(pods))
+	release := make(chan struct{})
+	exec := func(podName, namespace string) PodResult {
+		started <- struct{}{}
+		<-release
+		return PodResult{podName: podName}
+	}
+
+	done := make(chan []PodResult, 1)
+	go func() { done <- runParallelExec(pods, limit, exec) }()
+
+	for i := 0; i < limit; i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d/%d execs started before timeout, want %d to run concurrently", i, limit, limit)
+		}
+	}
+
+	select {
+	case <-started:
+		t.Fatalf("more than %d execs started concurrently, limit was not honored", limit)
+	case <-time.After(100 * time.Millisecond):
+		// no additional exec started while at the limit, as expected
+	}
+
+	close(release)
+
+	select {
+	case results := <-done:
+		if len(results) != len(pods) {
+			t.Fatalf("len(results) = %d, want %d", len(results), len(pods))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runParallelExec did not return after release")
+	}
+}
+
+func TestRunParallelExecZeroConcurrencyRunsAllPodsAtOnce(t *testing.T) {
+	pods := []v1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-0"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-2"}},
+	}
+
+	started := make(chan struct{}, len(pods))
+	release := make(chan struct{})
+	exec := func(podName, namespace string) PodResult {
+		started <- struct{}{}
+		<-release
+		return PodResult{podName: podName}
+	}
+
+	done := make(chan []PodResult, 1)
+	go func() { done <- runParallelExec(pods, 0, exec) }()
+
+	for i := 0; i < len(pods); i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d/%d execs started concurrently before timeout, want all pods to run at once", i, len(pods))
+		}
+	}
+
+	close(release)
+
+	select {
+	case results := <-done:
+		if len(results) != len(pods) {
+			t.Fatalf("len(results) = %d, want %d", len(results), len(pods))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runParallelExec did not return after release")
+	}
+}
+
 func TestSortPodResultsByName(t *testing.T) {
 	results := []PodResult{
 		{podName: "pod-c"},
