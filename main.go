@@ -11,9 +11,9 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -107,7 +107,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Skipping pod %s: phase is %s (not Running)\n", pod.Name, pod.Status.Phase)
 	}
 
-	results := runParallelExec(config, clientset, runningPods, *container, args, *concurrency, *timeout)
+	exec := func(podName, namespace string) PodResult {
+		return execCommand(config, clientset, podName, namespace, *container, args, *timeout)
+	}
+	results := runParallelExec(runningPods, *concurrency, exec)
 	sortPodResults(results)
 
 	failed := false
@@ -147,15 +150,7 @@ func tuneClientThroughput(config *rest.Config, concurrency int) {
 	config.Burst = concurrency * 2
 }
 
-func runParallelExec(
-	config *rest.Config,
-	clientset *kubernetes.Clientset,
-	pods []v1.Pod,
-	container string,
-	command []string,
-	concurrency int,
-	timeout time.Duration,
-) []PodResult {
+func runParallelExec(pods []v1.Pod, concurrency int, exec func(podName, namespace string) PodResult) []PodResult {
 	if len(pods) == 0 {
 		return nil
 	}
@@ -165,27 +160,18 @@ func runParallelExec(
 		limit = len(pods)
 	}
 
-	sem := make(chan struct{}, limit)
-	resultsChan := make(chan PodResult, len(pods))
-	var wg sync.WaitGroup
+	results := make([]PodResult, len(pods))
+	var g errgroup.Group
+	g.SetLimit(limit)
 
-	for _, pod := range pods {
-		wg.Add(1)
-		go func(name, ns string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			resultsChan <- execCommand(config, clientset, name, ns, container, command, timeout)
-		}(pod.Name, pod.Namespace)
+	for i, pod := range pods {
+		g.Go(func() error {
+			results[i] = exec(pod.Name, pod.Namespace)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	close(resultsChan)
-
-	results := make([]PodResult, 0, len(pods))
-	for result := range resultsChan {
-		results = append(results, result)
-	}
+	_ = g.Wait()
 	return results
 }
 
