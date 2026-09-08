@@ -1,0 +1,9 @@
+/kubectl-parallel-exec
+/kubectl-parallel-exec-*
+*.exe
+*.test
+*.out
+.idea/
+.vscode/
+*.swp
+*~
