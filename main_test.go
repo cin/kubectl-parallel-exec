@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -87,9 +88,13 @@ func TestRunParallelExecReturnsResultForEachPod(t *testing.T) {
 		{ObjectMeta: metav1.ObjectMeta{Name: "pod-b", Namespace: "ns-b"}},
 	}
 
-	results := runParallelExec(pods, 2, func(podName, namespace string) PodResult {
+	results, interrupted := runParallelExec(context.Background(), pods, 2, func(_ context.Context, podName, namespace string) PodResult {
 		return PodResult{podName: podName, output: namespace}
 	})
+
+	if interrupted {
+		t.Fatal("interrupted = true, want false")
+	}
 
 	if len(results) != len(pods) {
 		t.Fatalf("len(results) = %d, want %d", len(results), len(pods))
@@ -105,12 +110,59 @@ func TestRunParallelExecReturnsResultForEachPod(t *testing.T) {
 }
 
 func TestRunParallelExecEmptyPods(t *testing.T) {
-	results := runParallelExec(nil, 4, func(string, string) PodResult {
+	results, interrupted := runParallelExec(context.Background(), nil, 4, func(context.Context, string, string) PodResult {
 		t.Fatal("exec should not be called with no pods")
 		return PodResult{}
 	})
 	if results != nil {
 		t.Fatalf("runParallelExec(nil pods) = %v, want nil", results)
+	}
+	if interrupted {
+		t.Fatal("interrupted = true, want false")
+	}
+}
+
+func TestRunParallelExecStopsOnContextCancellation(t *testing.T) {
+	pods := []v1.Pod{
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-0"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{}, len(pods))
+	exec := func(ctx context.Context, podName, namespace string) PodResult {
+		started <- struct{}{}
+		<-ctx.Done()
+		return PodResult{podName: podName}
+	}
+
+	type outcome struct {
+		results     []PodResult
+		interrupted bool
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		results, interrupted := runParallelExec(ctx, pods, 2, exec)
+		done <- outcome{results, interrupted}
+	}()
+
+	for i := 0; i < len(pods); i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d/%d execs started before timeout", i, len(pods))
+		}
+	}
+
+	cancel()
+
+	select {
+	case got := <-done:
+		if !got.interrupted {
+			t.Fatal("interrupted = false, want true after ctx cancellation")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runParallelExec did not return after context cancellation")
 	}
 }
 
@@ -127,14 +179,17 @@ func TestRunParallelExecHonorsConcurrencyLimit(t *testing.T) {
 
 	started := make(chan struct{}, len(pods))
 	release := make(chan struct{})
-	exec := func(podName, namespace string) PodResult {
+	exec := func(_ context.Context, podName, namespace string) PodResult {
 		started <- struct{}{}
 		<-release
 		return PodResult{podName: podName}
 	}
 
 	done := make(chan []PodResult, 1)
-	go func() { done <- runParallelExec(pods, limit, exec) }()
+	go func() {
+		results, _ := runParallelExec(context.Background(), pods, limit, exec)
+		done <- results
+	}()
 
 	for i := 0; i < limit; i++ {
 		select {
@@ -172,14 +227,17 @@ func TestRunParallelExecZeroConcurrencyRunsAllPodsAtOnce(t *testing.T) {
 
 	started := make(chan struct{}, len(pods))
 	release := make(chan struct{})
-	exec := func(podName, namespace string) PodResult {
+	exec := func(_ context.Context, podName, namespace string) PodResult {
 		started <- struct{}{}
 		<-release
 		return PodResult{podName: podName}
 	}
 
 	done := make(chan []PodResult, 1)
-	go func() { done <- runParallelExec(pods, 0, exec) }()
+	go func() {
+		results, _ := runParallelExec(context.Background(), pods, 0, exec)
+		done <- results
+	}()
 
 	for i := 0; i < len(pods); i++ {
 		select {
@@ -198,6 +256,23 @@ func TestRunParallelExecZeroConcurrencyRunsAllPodsAtOnce(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("runParallelExec did not return after release")
+	}
+}
+
+func TestTranslateExecErrorNamesTimeoutFlag(t *testing.T) {
+	err := translateExecError(context.DeadlineExceeded, 5*time.Second)
+
+	for _, want := range []string{"-timeout", "5s"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("translateExecError() = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
+func TestTranslateExecErrorPassesThroughOtherErrors(t *testing.T) {
+	original := errors.New("boom")
+	if got := translateExecError(original, time.Second); got != original {
+		t.Fatalf("translateExecError() = %v, want unchanged %v", got, original)
 	}
 }
 

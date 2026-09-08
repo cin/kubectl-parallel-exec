@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -77,6 +79,9 @@ func main() {
 		fatal("command to execute is required")
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	kubeconfigPath := selectKubeconfig(*kubeconfig, os.Getenv("KUBECONFIG"))
 
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -95,7 +100,7 @@ func main() {
 		fatal("failed to create kubernetes client: %v", err)
 	}
 
-	pods, err := clientset.CoreV1().Pods(*namespace).List(context.Background(), metav1.ListOptions{
+	pods, err := clientset.CoreV1().Pods(*namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: *labelSelector,
 	})
 	if err != nil {
@@ -107,13 +112,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Skipping pod %s: phase is %s (not Running)\n", pod.Name, pod.Status.Phase)
 	}
 
-	exec := func(podName, namespace string) PodResult {
-		return execCommand(config, clientset, podName, namespace, *container, args, *timeout)
+	exec := func(ctx context.Context, podName, namespace string) PodResult {
+		return execCommand(ctx, config, clientset, podName, namespace, *container, args, *timeout)
 	}
-	results := runParallelExec(runningPods, *concurrency, exec)
+	results, interrupted := runParallelExec(ctx, runningPods, *concurrency, exec)
 	sortPodResults(results)
 
-	failed := false
+	if interrupted {
+		fmt.Fprintln(os.Stderr, "Interrupted; printing results collected so far.")
+	}
+
+	failed := interrupted
 	for _, result := range results {
 		fmt.Print(formatPodResult(result))
 		if result.err != nil {
@@ -150,9 +159,17 @@ func tuneClientThroughput(config *rest.Config, concurrency int) {
 	config.Burst = concurrency * 2
 }
 
-func runParallelExec(pods []v1.Pod, concurrency int, exec func(podName, namespace string) PodResult) []PodResult {
+// runParallelExec dispatches exec to every pod, bounded by concurrency.
+// If ctx is canceled before every pod finishes, it returns immediately
+// with whatever results have been collected so far and interrupted=true.
+func runParallelExec(
+	ctx context.Context,
+	pods []v1.Pod,
+	concurrency int,
+	exec func(ctx context.Context, podName, namespace string) PodResult,
+) (results []PodResult, interrupted bool) {
 	if len(pods) == 0 {
-		return nil
+		return nil, false
 	}
 
 	limit := concurrency
@@ -160,19 +177,34 @@ func runParallelExec(pods []v1.Pod, concurrency int, exec func(podName, namespac
 		limit = len(pods)
 	}
 
-	results := make([]PodResult, len(pods))
+	resultsChan := make(chan PodResult, len(pods))
 	var g errgroup.Group
 	g.SetLimit(limit)
 
-	for i, pod := range pods {
+	for _, pod := range pods {
 		g.Go(func() error {
-			results[i] = exec(pod.Name, pod.Namespace)
+			resultsChan <- exec(ctx, pod.Name, pod.Namespace)
 			return nil
 		})
 	}
 
-	_ = g.Wait()
-	return results
+	go func() {
+		_ = g.Wait()
+		close(resultsChan)
+	}()
+
+	results = make([]PodResult, 0, len(pods))
+	for {
+		select {
+		case result, ok := <-resultsChan:
+			if !ok {
+				return results, false
+			}
+			results = append(results, result)
+		case <-ctx.Done():
+			return results, true
+		}
+	}
 }
 
 func filterRunningPods(pods []v1.Pod) (running, skipped []v1.Pod) {
@@ -222,6 +254,7 @@ func combineOutput(stdout, stderr string) string {
 }
 
 func execCommand(
+	ctx context.Context,
 	config *rest.Config,
 	clientset *kubernetes.Clientset,
 	podName, namespace, container string,
@@ -247,7 +280,6 @@ func execCommand(
 		return PodResult{podName, "", err, time.Since(start)}
 	}
 
-	ctx := context.Background()
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -262,10 +294,20 @@ func execCommand(
 
 	output := combineOutput(stdout.String(), stderr.String())
 	if err != nil {
-		return PodResult{podName, output, err, time.Since(start)}
+		return PodResult{podName, output, translateExecError(err, timeout), time.Since(start)}
 	}
 
 	return PodResult{podName, output, nil, time.Since(start)}
+}
+
+// translateExecError turns a per-pod exec deadline into a message that
+// names the -timeout flag responsible, rather than a bare "context
+// deadline exceeded".
+func translateExecError(err error, timeout time.Duration) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("exec exceeded -timeout of %s", timeout)
+	}
+	return err
 }
 
 func newExecutor(config *rest.Config, reqURL *url.URL) (remotecommand.Executor, error) {
