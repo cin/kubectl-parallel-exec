@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -42,6 +44,40 @@ func TestSelectKubeconfig(t *testing.T) {
 				t.Fatalf("selectKubeconfig() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFilterRunningPods(t *testing.T) {
+	pod := func(name string, phase v1.PodPhase) v1.Pod {
+		return v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Status:     v1.PodStatus{Phase: phase},
+		}
+	}
+
+	pods := []v1.Pod{
+		pod("running-1", v1.PodRunning),
+		pod("succeeded-1", v1.PodSucceeded),
+		pod("running-2", v1.PodRunning),
+		pod("pending-1", v1.PodPending),
+	}
+
+	running, skipped := filterRunningPods(pods)
+
+	gotRunning := []string{running[0].Name, running[1].Name}
+	wantRunning := []string{"running-1", "running-2"}
+	for i := range wantRunning {
+		if gotRunning[i] != wantRunning[i] {
+			t.Fatalf("running pod names = %v, want %v", gotRunning, wantRunning)
+		}
+	}
+
+	gotSkipped := []string{skipped[0].Name, skipped[1].Name}
+	wantSkipped := []string{"succeeded-1", "pending-1"}
+	for i := range wantSkipped {
+		if gotSkipped[i] != wantSkipped[i] {
+			t.Fatalf("skipped pod names = %v, want %v", gotSkipped, wantSkipped)
+		}
 	}
 }
 

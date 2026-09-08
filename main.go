@@ -102,7 +102,12 @@ func main() {
 		fatal("failed to list pods: %v", err)
 	}
 
-	results := runParallelExec(config, clientset, pods.Items, *container, args, *concurrency, *timeout)
+	runningPods, skippedPods := filterRunningPods(pods.Items)
+	for _, pod := range skippedPods {
+		fmt.Fprintf(os.Stderr, "Skipping pod %s: phase is %s (not Running)\n", pod.Name, pod.Status.Phase)
+	}
+
+	results := runParallelExec(config, clientset, runningPods, *container, args, *concurrency, *timeout)
 	sortPodResults(results)
 
 	failed := false
@@ -182,6 +187,17 @@ func runParallelExec(
 		results = append(results, result)
 	}
 	return results
+}
+
+func filterRunningPods(pods []v1.Pod) (running, skipped []v1.Pod) {
+	for _, pod := range pods {
+		if pod.Status.Phase == v1.PodRunning {
+			running = append(running, pod)
+		} else {
+			skipped = append(skipped, pod)
+		}
+	}
+	return running, skipped
 }
 
 func sortPodResults(results []PodResult) {
