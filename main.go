@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/streaming/pkg/httpstream"
 )
 
@@ -132,7 +133,10 @@ func selectKubeconfig(flagValue, envValue string) string {
 
 func tuneClientThroughput(config *rest.Config, concurrency int) {
 	if concurrency <= 0 {
-		concurrency = defaultConcurrency
+		// -j 0 means unlimited workers; don't let the client-side rate
+		// limiter throttle exec setup requests back down to the default.
+		config.RateLimiter = flowcontrol.NewFakeAlwaysRateLimiter()
+		return
 	}
 	config.QPS = float32(concurrency)
 	config.Burst = concurrency * 2
