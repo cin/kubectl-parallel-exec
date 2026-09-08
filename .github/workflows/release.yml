@@ -23,14 +23,14 @@ jobs:
     - name: Go Lint
       uses: golangci/golangci-lint-action@v9
       with:
-        version: latest
+        version: v2.12.2
         args: --timeout=5m
 
     - name: Go Mod Download
       run: go mod download
 
     - name: Go Test
-      run: go test ./...
+      run: go test -race ./...
 
     - name: Go Build linux/amd64
       run: |
