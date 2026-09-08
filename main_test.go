@@ -144,10 +144,10 @@ func TestTuneClientThroughput(t *testing.T) {
 
 	cfg = &rest.Config{}
 	tuneClientThroughput(cfg, 0)
-	if cfg.QPS != float32(defaultConcurrency) {
-		t.Fatalf("QPS = %v, want %v", cfg.QPS, defaultConcurrency)
+	if cfg.RateLimiter == nil {
+		t.Fatal("RateLimiter = nil, want an unthrottled limiter for -j 0")
 	}
-	if cfg.Burst != defaultConcurrency*2 {
-		t.Fatalf("Burst = %v, want %v", cfg.Burst, defaultConcurrency*2)
+	if !cfg.RateLimiter.TryAccept() {
+		t.Fatal("RateLimiter.TryAccept() = false, want -j 0 to never throttle")
 	}
 }
