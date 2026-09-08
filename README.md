@@ -13,6 +13,7 @@ A Go CLI for executing commands in parallel on Kubernetes pods selected by label
 - Cap concurrency with `-j` and set a per-pod `-timeout`
 - Aggregate results sorted by pod name
 - Non-zero exit if any pod exec fails
+- Skips pods that aren't in the `Running` phase (e.g. completed Job pods), with a note on stderr
 
 ## Requirements
 
